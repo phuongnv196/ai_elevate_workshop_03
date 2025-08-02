@@ -21,6 +21,9 @@ from services.function_calling_service import (
     function_tools
 )
 
+# Import TTS service
+from services.tts_service import TTSService
+
 # ========== LOGGER SETUP ==========
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,9 @@ conversation_bp = Blueprint('conversation', __name__)
 # Sử dụng database manager
 conversations_db = db_manager.get_conversations_db()
 messages_db = db_manager.get_messages_db()
+
+# ========== TTS SERVICE INITIALIZATION ==========
+tts_service = TTSService()
 
 # ========== CLIENT INITIALIZATION ==========
 try:
@@ -336,3 +342,192 @@ def chat(conversation_id):
             "success": False,
             "error": str(e)
         }), 500
+
+@conversation_bp.route('/messages/<message_id>/tts', methods=['POST'])
+def text_to_speech_message(message_id):
+    """Convert message content to speech"""
+    try:
+        # Kiểm tra TTS service có available không
+        if not tts_service.is_available:
+            return jsonify({
+                "success": False,
+                "error": "Text-to-Speech service không khả dụng. Vui lòng cài đặt dependencies."
+            }), 503
+        
+        # Tìm message theo ID
+        Message = Query()
+        message = messages_db.search(Message.id == message_id)
+        
+        if not message:
+            return jsonify({
+                "success": False,
+                "error": "Message không tồn tại"
+            }), 404
+        
+        message = message[0]
+        message_content = message.get("content", "")
+        
+        if not message_content.strip():
+            return jsonify({
+                "success": False,
+                "error": "Message không có nội dung để đọc"
+            }), 400
+        
+        # Lấy thông tin tùy chọn từ request (note: current TTS service doesn't support these yet)
+        data = request.get_json() or {}
+        # voice_speed = data.get("speed", 1.0)  # Future enhancement
+        # language = data.get("language", "en")  # Future enhancement
+        
+        # Xử lý nội dung trước khi TTS (loại bỏ markdown, emoji, etc.)
+        processed_content = _clean_text_for_tts(message_content)
+        
+        # Generate speech
+        result = tts_service.text_to_speech(
+            text=processed_content,
+            output_filename=None
+        )
+        
+        if result["success"]:
+            return jsonify({
+                "success": True,
+                "message": "Text-to-Speech conversion thành công",
+                "audio_file": result["filename"],
+                "download_url": f"/api/tts/download/{result['filename']}",
+                "duration": result.get("duration_seconds"),
+                "file_size": result.get("file_size_bytes"),
+                "message_info": {
+                    "id": message["id"],
+                    "role": message["role"],
+                    "content_preview": processed_content[:100] + "..." if len(processed_content) > 100 else processed_content,
+                    "timestamp": message["timestamp"]
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Lỗi TTS: {result['error']}"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Lỗi trong text-to-speech: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@conversation_bp.route('/conversations/<conversation_id>/messages/tts', methods=['POST'])
+def text_to_speech_conversation(conversation_id):
+    """Convert toàn bộ conversation thành speech (chỉ assistant messages)"""
+    try:
+        if not tts_service.is_available:
+            return jsonify({
+                "success": False,
+                "error": "Text-to-Speech service không khả dụng"
+            }), 503
+        
+        # Lấy tất cả messages của conversation
+        Message = Query()
+        messages = messages_db.search(Message.conversation_id == conversation_id)
+        
+        if not messages:
+            return jsonify({
+                "success": False,
+                "error": "Conversation không có messages"
+            }), 404
+        
+        # Chỉ lấy assistant messages và sắp xếp theo thời gian
+        assistant_messages = [msg for msg in messages if msg.get("role") == "assistant"]
+        assistant_messages.sort(key=lambda x: x['timestamp'])
+        
+        if not assistant_messages:
+            return jsonify({
+                "success": False,
+                "error": "Conversation không có AI responses để đọc"
+            }), 404
+        
+        # Kết hợp nội dung các messages
+        combined_content = "\n\n".join([
+            f"Phản hồi {i+1}: {msg['content']}" 
+            for i, msg in enumerate(assistant_messages)
+        ])
+        
+        # Lấy thông tin tùy chọn (note: current TTS service doesn't support these yet)
+        data = request.get_json() or {}
+        # voice_speed = data.get("speed", 1.0)  # Future enhancement
+        # language = data.get("language", "en")  # Future enhancement
+        
+        # Xử lý và generate speech
+        processed_content = _clean_text_for_tts(combined_content)
+        
+        result = tts_service.text_to_speech(
+            text=processed_content,
+            output_filename=None
+        )
+        
+        if result["success"]:
+            return jsonify({
+                "success": True,
+                "message": "Conversion toàn bộ conversation thành công",
+                "audio_file": result["filename"],
+                "download_url": f"/api/tts/download/{result['filename']}",
+                "duration": result.get("duration_seconds"),
+                "file_size": result.get("file_size_bytes"),
+                "conversation_info": {
+                    "id": conversation_id,
+                    "messages_count": len(assistant_messages),
+                    "content_preview": processed_content[:200] + "..." if len(processed_content) > 200 else processed_content
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Lỗi TTS: {result['error']}"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Lỗi trong conversation TTS: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+def _clean_text_for_tts(text: str) -> str:
+    """Clean text for better TTS output"""
+    import re
+    
+    # Loại bỏ markdown formatting
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Bold
+    text = re.sub(r'\*(.*?)\*', r'\1', text)      # Italic  
+    text = re.sub(r'`(.*?)`', r'\1', text)        # Code
+    text = re.sub(r'#{1,6}\s*(.*)', r'\1', text)  # Headers
+    
+    # Loại bỏ emoji và special characters
+    text = re.sub(r'[🔧💡🎯🚫✅]', '', text)
+    
+    # Thay thế URLs
+    text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', 'link', text)
+    
+    # Chuẩn hóa khoảng trắng
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    
+    # Thay thế một số ký hiệu để đọc tự nhiên hơn
+    replacements = {
+        '&': 'và',
+        '@': 'at',
+        '#': 'hashtag',
+        '%': 'phần trăm',
+        '$': 'đô la',
+        '+': 'cộng',
+        '=': 'bằng',
+        '<': 'nhỏ hơn',
+        '>': 'lớn hơn',
+        '•': '',
+        '→': 'đến',
+        '←': 'từ'
+    }
+    
+    for symbol, replacement in replacements.items():
+        text = text.replace(symbol, replacement)
+    
+    return text

@@ -14,6 +14,7 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import TTSControls from './TTSControls';
 import type { Conversation } from '../../types/chat';
 
 interface ChatHeaderProps {
@@ -127,6 +128,8 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1 }}>
+          <TTSControls conversation={conversation} />
+          
           <Tooltip title="Chỉnh sửa tiêu đề">
             <IconButton
               size="small"

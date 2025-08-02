@@ -1,5 +1,6 @@
 import type { Conversation, ConversationResponse, MessagesResponse, ChatResponse } from '../types/chat';
 
+// Use Vite proxy for API calls
 const API_BASE_URL = '/api/conversation';
 
 export class ChatService {
@@ -114,5 +115,53 @@ export class ChatService {
       console.error('Error sending message:', error);
       throw error;
     }
+  }
+
+  static async textToSpeech(messageId: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/messages/${messageId}/tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        return data;
+      }
+      throw new Error(data.error || 'Failed to convert text to speech');
+    } catch (error) {
+      console.error('Error converting to speech:', error);
+      throw error;
+    }
+  }
+
+  static async textToSpeechConversation(conversationId: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages/tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        return data;
+      }
+      throw new Error(data.error || 'Failed to convert conversation to speech');
+    } catch (error) {
+      console.error('Error converting conversation to speech:', error);
+      throw error;
+    }
+  }
+
+  static getAudioDownloadUrl(filename: string): string {
+    return `/api/tts/download/${filename}`;
   }
 }
