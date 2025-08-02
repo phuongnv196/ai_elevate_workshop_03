@@ -1,28 +1,42 @@
 # Flask REST API
 
 ## Mô tả
-Đây là một Flask REST API với các endpoint cơ bản để quản lý users, data và **Text-to-Speech functionality** sử dụng Meta's MMS-TTS model.
+Đây là một Flask REST API với các endpoint cơ bản để quản lý users, data, **Text-to-Speech functionality** sử dụng Meta's MMS-TTS model, và **Conversation API** với AI assistant tích hợp OpenAI.
 
-## Tính năng mới: Text-to-Speech API 🎤
-API này hỗ trợ chuyển đổi văn bản thành giọng nói sử dụng model `facebook/mms-tts-eng` với chất lượng cao.
+## Tính năng chính
+- 🎤 **Text-to-Speech API**: Chuyển đổi văn bản thành giọng nói
+- 💬 **Conversation API**: Chat với AI assistant có hỗ trợ function calling
+- 👥 **User Management**: CRUD operations cho users
+- 📊 **Data Management**: Quản lý data entries
 
 ## Cấu trúc thư mục
 ```
 backend/
-├── main.py                    # Entry point của ứng dụng
-├── requirements.txt           # Dependencies (đã thêm TTS libraries)
-├── test_tts_api.py           # Test script cho TTS API
-├── TTS_API_DOCUMENTATION.md  # Chi tiết documentation cho TTS API
+├── main.py                          # Entry point của ứng dụng
+├── requirements.txt                 # Dependencies (bao gồm TTS và Conversation)
+├── test_tts_api.py                 # Test script cho TTS API
+├── test_conversation_api.py        # Test script cho Conversation API
+├── TTS_API_DOCUMENTATION.md        # Chi tiết documentation cho TTS API
+├── CONVERSATION_API_DOCUMENTATION.md # Chi tiết documentation cho Conversation API
+├── .env.example                    # Template cho environment variables
 ├── config/
-│   └── config.py             # Cấu hình ứng dụng
+│   └── config.py                   # Cấu hình ứng dụng
 ├── routes/
-│   └── api_routes.py         # API routes (bao gồm TTS endpoints)
+│   ├── api_routes.py              # API routes cơ bản
+│   ├── tts_routes.py              # TTS endpoints
+│   └── conversation_router.py     # Conversation endpoints
 ├── services/
-│   ├── user_service.py       # User business logic
-│   ├── data_service.py       # Data business logic
-│   └── tts_service.py        # Text-to-Speech service
-└── core/
-    └── utils.py              # Utility functions
+│   ├── user_service.py            # User business logic
+│   ├── data_service.py            # Data business logic
+│   ├── tts_service.py             # Text-to-Speech service
+│   └── function_calling_service.py # AI function calling service
+├── core/
+│   └── utils.py                   # Utility functions
+├── data/                          # JSON database files (TinyDB)
+│   ├── conversations.json
+│   ├── messages.json
+│   └── data_files.json
+└── database.py                    # Database manager
 ```
 
 ## Cài đặt và chạy
@@ -32,7 +46,14 @@ backend/
 pip install -r requirements.txt
 ```
 
-2. Chạy ứng dụng:
+2. Cấu hình environment variables (tùy chọn):
+```bash
+# Copy template và điều chỉnh theo nhu cầu
+cp .env.example .env
+# Chỉnh sửa .env để thêm OPENAI_API_KEY nếu muốn sử dụng Conversation API
+```
+
+3. Chạy ứng dụng:
 ```bash
 python main.py
 ```
@@ -64,7 +85,31 @@ python main.py
 - `GET /api/tts/info` - Lấy thông tin về TTS model
 - `POST /api/tts/cleanup` - Dọn dẹp file audio cũ
 
+### Conversation API 💬
+- `GET /api/conversation/conversations` - Lấy danh sách conversations
+- `POST /api/conversation/conversations` - Tạo conversation mới
+- `PUT /api/conversation/conversations/<id>` - Cập nhật conversation
+- `DELETE /api/conversation/conversations/<id>` - Xóa conversation
+- `GET /api/conversation/conversations/<id>/messages` - Lấy messages
+- `POST /api/conversation/conversations/<id>/chat` - Gửi tin nhắn chat
+
 ## Ví dụ sử dụng
+
+### Conversation API
+```bash
+# Tạo conversation mới
+curl -X POST http://localhost:5000/api/conversation/conversations \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Tech Discussion"}'
+
+# Gửi tin nhắn chat (yêu cầu OPENAI_API_KEY)
+curl -X POST http://localhost:5000/api/conversation/conversations/{conversation_id}/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What are the latest AI developments?"}'
+
+# Lấy danh sách conversations
+curl http://localhost:5000/api/conversation/conversations
+```
 
 ### Text-to-Speech
 ```bash
@@ -120,18 +165,27 @@ Tất cả responses đều có format chuẩn:
 }
 ```
 
-## Kiểm tra TTS API
-Chạy test script để kiểm tra tất cả TTS endpoints:
+## Kiểm tra API
+
+### Test TTS API
 ```bash
 python test_tts_api.py
 ```
 
-Hoặc test với custom URL và text:
+### Test Conversation API
 ```bash
+python test_conversation_api.py
+```
+
+### Test với custom parameters
+```bash
+# TTS với custom text
 python test_tts_api.py --url http://localhost:5000 --text "Your test message here"
 ```
 
-## Yêu cầu hệ thống cho TTS
+## Yêu cầu hệ thống
+
+### Cho TTS API
 - Python 3.8+
 - PyTorch (tự động cài đặt)
 - Transformers library
@@ -139,10 +193,33 @@ python test_tts_api.py --url http://localhost:5000 --text "Your test message her
 - Ít nhất 2GB RAM để load model
 - Khoảng 1GB ổ cứng cho model cache
 
+### Cho Conversation API
+- OpenAI API key (để sử dụng chat functionality)
+- TinyDB cho local storage
+- Requests library
+
+## Environment Variables
+Tạo file `.env` từ `.env.example` và cấu hình:
+```env
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-3.5-turbo
+# ... other optional variables
+```
+
 ## Lưu ý quan trọng
+
+### TTS API
 - Model sẽ được tải xuống tự động lần đầu chạy (khoảng 400MB)
 - File audio được tạo sẽ tự động xóa sau 24 giờ
 - Giới hạn văn bản: 5000 ký tự
 - Chỉ hỗ trợ tiếng Anh (có thể mở rộng cho ngôn ngữ khác)
 
-Xem chi tiết trong file `TTS_API_DOCUMENTATION.md`
+### Conversation API
+- Yêu cầu OpenAI API key để sử dụng chat functionality
+- Hỗ trợ function calling cho tech news, data analysis
+- Data được lưu local trong JSON files
+- AI assistant chuyên về technology topics
+
+## Documentation chi tiết
+- TTS API: Xem `TTS_API_DOCUMENTATION.md`
+- Conversation API: Xem `CONVERSATION_API_DOCUMENTATION.md`

@@ -10,7 +10,7 @@ from openai import OpenAI
 import logging
 
 # Import config và database
-from config import Config
+from config.config import Config
 from database import db_manager
 
 # Import function calling services
