@@ -1,5 +1,9 @@
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class Config:
     """Base configuration class"""
@@ -23,6 +27,10 @@ class Config:
     OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-3.5-turbo')
     MAX_TOKENS = int(os.environ.get('MAX_TOKENS', '1500'))
     TEMPERATURE = float(os.environ.get('TEMPERATURE', '0.7'))
+    
+    # OpenAI configuration for RAG features
+    OPENAI_ENDPOINT = os.environ.get('OPENAI_ENDPOINT')
+    OPENAI_API_KEY_EMBEDDING = os.environ.get('OPENAI_API_KEY_EMBEDDING')
     
     # Database paths for TinyDB
     CONVERSATIONS_DB = os.environ.get('CONVERSATIONS_DB', 'data/conversations.json')

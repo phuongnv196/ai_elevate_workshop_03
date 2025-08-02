@@ -24,6 +24,9 @@ from services.function_calling_service import (
 # Import TTS service
 from services.tts_service import TTSService
 
+# Import RAG service
+from services.rag_service import rag_service
+
 # ========== LOGGER SETUP ==========
 logger = logging.getLogger(__name__)
 
@@ -190,7 +193,7 @@ def get_messages(conversation_id):
 
 @conversation_bp.route('/conversations/<conversation_id>/chat', methods=['POST'])
 def chat(conversation_id):
-    """Gửi tin nhắn và nhận phản hồi từ AI"""
+    """Gửi tin nhắn và nhận phản hồi từ AI với tùy chọn RAG"""
     try:
         if not client:
             return jsonify({
@@ -222,92 +225,50 @@ def chat(conversation_id):
         conversation_messages = messages_db.search(Message.conversation_id == conversation_id)
         conversation_messages.sort(key=lambda x: x['timestamp'])
         
-        # Chuẩn bị messages cho OpenAI
-        openai_messages = [
-            {"role": "system", "content": """Bạn là một AI Technical Support Assistant chuyên về công nghệ và kỹ thuật. 
-
-            🎯 **NHIỆM VỤ CHÍNH:**
-            1. Trả lời các câu hỏi về công nghệ, lập trình, kỹ thuật
-            2. Lấy và phân tích tin tức công nghệ mới nhất
-            3. Đọc và phân tích file dữ liệu kỹ thuật
-            4. Tóm tắt thông tin liên quan đến technology
-            
-            🚫 **LOẠI TRỪ THÔNG TIN KHÔNG LIÊN QUAN:**
-            - Tin tức giải trí, thể thao, chính trị
-            - Thông tin không có tính kỹ thuật
-            - Nội dung không liên quan đến technology, IT, khoa học
-            - Quảng cáo, marketing không có yếu tố tech
-            
-            ✅ **CHỈ TẬP TRUNG VÀO:**
-            - Công nghệ thông tin (IT, Software, Hardware)
-            - Khoa học máy tính và AI
-            - Lập trình và phát triển phần mềm
-            - Cybersecurity và bảo mật
-            - Cloud computing, DevOps
-            - IoT, Blockchain, Data Science
-            - Mobile development, Web development
-            - Startup công nghệ và innovation
-            
-            Khi gặp câu hỏi không liên quan đến công nghệ, hãy lịch sự chuyển hướng về chủ đề technical."""}
-        ]
-        
-        # Thêm lịch sử conversation (giới hạn 10 tin nhắn gần nhất)
-        for msg in conversation_messages[-20:]:
-            openai_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
-        
-        # Gọi OpenAI API với function calling
-        response = client.chat.completions.create(
-            model=Config.OPENAI_MODEL,
-            messages=openai_messages,
-            tools=function_tools,
-            tool_choice="auto",
-            max_tokens=Config.MAX_TOKENS,
-            temperature=Config.TEMPERATURE
-        )
-        
-        response_message = response.choices[0].message
         assistant_content = ""
+        response_metadata = {}
         
-        # Xử lý function calling
-        if response_message.tool_calls:
-            assistant_content += "🔧 Đang thực hiện các chức năng được yêu cầu...\n\n"
+        try:
+            # Chuẩn bị conversation history cho RAG
+            rag_history = []
+
+            for msg in conversation_messages[-10:]:  # Lấy 10 tin nhắn gần nhất
+                rag_history.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
             
-            for tool_call in response_message.tool_calls:
-                function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments)
+            # Gọi RAG service
+            rag_result = rag_service.chat_with_context(user_message, rag_history)
+            
+            if rag_result["success"]:
+                assistant_content = rag_result["response"]
+                response_metadata = {
+                    "mode": "rag",
+                    "context_used": rag_result.get("context_used", 0),
+                    "context_snippets": rag_result.get("context_snippets", []),
+                    "response_type": rag_result.get("response_type", "rag"),
+                    "tokens_used": rag_result.get("tokens_used")
+                }
                 
-                # Thực hiện function call
-                if function_name == "get_tech_news":
-                    result = get_tech_news(function_args.get("query", "technology"))
-                elif function_name == "read_data_file":
-                    result = read_data_file(function_args.get("file_path"))
-                elif function_name == "summarize_information":
-                    result = summarize_information(
-                        function_args.get("text"),
-                        function_args.get("summary_type", "general")
-                    )
+                # Thêm thông tin về việc sử dụng RAG
+                if rag_result.get("context_used", 0) > 0:
+                    assistant_content = f"🧠 ****Dựa trên {rag_result['context_used']} tài liệu tham khảo:\n\n{assistant_content}"
                 else:
-                    result = f"Function {function_name} không được hỗ trợ."
+                    assistant_content = f"🧠 ****Không tìm thấy tài liệu liên quan, trả lời dựa trên kiến thức chung:\n\n{assistant_content}"
+                    
+            else:
+                # Fallback to normal chat if RAG fails
+                logger.warning(f"RAG failed: {rag_result.get('error', 'Unknown error')}, falling back to normal chat")
+                use_rag = False
+                response_metadata["rag_error"] = rag_result.get('error', 'Unknown error')
+                response_metadata["fallback_to_normal"] = True
                 
-                assistant_content += result + "\n\n"
-                
-            # Gọi lại OpenAI để có response tự nhiên hơn
-            openai_messages.append({"role": "assistant", "content": assistant_content})
-            openai_messages.append({"role": "user", "content": "Hãy tóm tắt và giải thích kết quả trên một cách ngắn gọn."})
-            
-            final_response = client.chat.completions.create(
-                model=Config.OPENAI_MODEL,
-                messages=openai_messages,
-                max_tokens=500,
-                temperature=Config.TEMPERATURE
-            )
-            
-            assistant_content += "💡 **Tóm tắt:**\n" + final_response.choices[0].message.content
-        else:
-            assistant_content = response_message.content
+        except Exception as e:
+            logger.error(f"RAG processing error: {str(e)}")
+            use_rag = False
+            response_metadata["rag_error"] = str(e)
+            response_metadata["fallback_to_normal"] = True
         
         # Lưu tin nhắn của assistant
         assistant_msg = {
@@ -315,7 +276,8 @@ def chat(conversation_id):
             "conversation_id": conversation_id,
             "role": "assistant",
             "content": assistant_content,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "metadata": response_metadata  # Lưu metadata về cách tạo response
         }
         messages_db.insert(assistant_msg)
         
@@ -333,7 +295,8 @@ def chat(conversation_id):
             "success": True,
             "response": assistant_content,
             "user_message": user_msg,
-            "assistant_message": assistant_msg
+            "assistant_message": assistant_msg,
+            "metadata": response_metadata
         })
         
     except Exception as e:
@@ -513,18 +476,19 @@ def _clean_text_for_tts(text: str) -> str:
     
     # Thay thế một số ký hiệu để đọc tự nhiên hơn
     replacements = {
-        '&': 'và',
+        '&': 'and',
         '@': 'at',
         '#': 'hashtag',
-        '%': 'phần trăm',
-        '$': 'đô la',
-        '+': 'cộng',
-        '=': 'bằng',
-        '<': 'nhỏ hơn',
-        '>': 'lớn hơn',
+        '%': 'percent',
+        '$': 'dollar',
+        '!': '',
+        '+': 'plus',
+        '=': 'equals',
+        '<': 'less than',
+        '>': 'greater than',
         '•': '',
-        '→': 'đến',
-        '←': 'từ'
+        '→': 'to',
+        '←': 'from'
     }
     
     for symbol, replacement in replacements.items():
