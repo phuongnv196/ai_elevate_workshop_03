@@ -49,7 +49,7 @@ def create_app():
                     'update': '/api/conversation/conversations/<conversation_id>',
                     'messages': '/api/conversation/conversations/<conversation_id>/messages',
                     'chat': '/api/conversation/conversations/<conversation_id>/chat'
-                }
+                },
             }
         })
     
@@ -76,7 +76,6 @@ def create_app():
         logger.info("✅ Conversation routes registered successfully")
     except Exception as e:
         logger.warning(f"⚠️  Could not register Conversation routes: {e}")
-    
     return app
 
 def check_tts_dependencies():
@@ -106,14 +105,30 @@ def check_conversation_dependencies():
         logger.warning("Conversation features will be disabled. Install with: pip install tinydb openai requests")
         return False
 
+def check_rag_dependencies():
+    """Check if RAG dependencies are available"""
+    try:
+        import chromadb
+        import fitz  # PyMuPDF
+        import openai
+        logger.info("✅ All RAG dependencies are available")
+        return True
+    except ImportError as e:
+        logger.warning(f"⚠️  RAG dependencies missing: {e}")
+        logger.warning("RAG features will be disabled. Install with: pip install chromadb PyMuPDF openai")
+        return False
+
 if __name__ == '__main__':
-    logger.info("🚀 Starting Flask API with Text-to-Speech and Conversation support")
+    logger.info("🚀 Starting Flask API with Text-to-Speech, Conversation and RAG support")
     
     # Check TTS dependencies
     tts_available = check_tts_dependencies()
     
     # Check Conversation dependencies
     conversation_available = check_conversation_dependencies()
+    
+    # Check RAG dependencies
+    rag_available = check_rag_dependencies()
     
     if tts_available:
         logger.info("🎤 TTS features enabled")
@@ -124,12 +139,25 @@ if __name__ == '__main__':
         logger.info("💬 Conversation features enabled")
     else:
         logger.info("📝 Conversation features disabled")
+        
+    if rag_available:
+        logger.info("🧠 RAG features enabled")
+        # Initialize RAG service with documents
+        try:
+            from utils.rag_init import initialize_rag_service
+            initialize_rag_service()
+        except Exception as e:
+            logger.warning(f"⚠️  Could not auto-initialize RAG service: {e}")
+    else:
+        logger.info("📝 RAG features disabled")
     
     app = create_app()
     
     logger.info("🌐 Server starting at http://localhost:5000")
-    logger.info("📚 API Documentation: Check /api/tts/info for TTS status")
-    logger.info("📚 Conversation API: Check /api/conversation/conversations for conversation features")
+    logger.info("📚 API Documentation:")
+    logger.info("  - TTS: Check /api/tts/info for TTS status")
+    logger.info("  - Conversation: Check /api/conversation/conversations for conversation features")
+    logger.info("  - RAG: Check /api/rag/info for RAG capabilities")
     
     try:
         app.run(debug=True, host='0.0.0.0', port=5000)

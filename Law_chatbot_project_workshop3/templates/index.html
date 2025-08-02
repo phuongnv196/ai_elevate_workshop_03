@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HR Chatbot</title>
+</head>
+<body>
+    <h1>Trợ lý luật vi phạm hành chính</h1>
+    <form method="POST">
+        <input name="message" placeholder="Hỏi tôi điều gì đó..." style="width:300px">
+        <button type="submit">Gửi</button>
+    </form>
+    <div>
+        {% for m in messages %}
+            <p><strong>{{ m.role }}:</strong> {{ m.content }}</p>
+        {% endfor %}
+    </div>
+</body>
+</html>

@@ -13,7 +13,7 @@ class TTSService:
     
     def __init__(self):
         """Initialize the TTS service with the model and tokenizer"""
-        self.model_name = "facebook/mms-tts-eng"
+        self.model_name = "facebook/mms-tts-vie"
         self.tokenizer = None
         self.model = None
         self.output_dir = os.path.join(tempfile.gettempdir(), "tts_outputs")
@@ -248,7 +248,7 @@ except Exception as e:
         
         def get_model_info(self):
             return {
-                'model_name': 'facebook/mms-tts-eng',
+                'model_name': 'facebook/mms-tts-vie',
                 'is_loaded': False,
                 'is_available': False,
                 'status': 'Service unavailable',
