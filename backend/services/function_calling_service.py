@@ -11,7 +11,7 @@ import logging
 from tinydb import Query
 
 # Import config và database
-from config import Config
+from config.config import Config
 from database import db_manager
 
 # ========== LOGGER SETUP ==========

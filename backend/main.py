@@ -31,7 +31,7 @@ def create_app():
     @app.route('/')
     def root():
         return jsonify({
-            'message': 'Welcome to Flask API with Text-to-Speech',
+            'message': 'Welcome to Flask API with Text-to-Speech and Conversation',
             'version': '2.0.0',
             'endpoints': {
                 'health': '/health',
@@ -41,6 +41,14 @@ def create_app():
                     'download': '/api/tts/download/<filename>',
                     'info': '/api/tts/info',
                     'cleanup': '/api/tts/cleanup'
+                },
+                'conversation': {
+                    'list': '/api/conversation/conversations',
+                    'create': '/api/conversation/conversations',
+                    'delete': '/api/conversation/conversations/<conversation_id>',
+                    'update': '/api/conversation/conversations/<conversation_id>',
+                    'messages': '/api/conversation/conversations/<conversation_id>/messages',
+                    'chat': '/api/conversation/conversations/<conversation_id>/chat'
                 }
             }
         })
@@ -61,6 +69,14 @@ def create_app():
     except Exception as e:
         logger.warning(f"⚠️  Could not register TTS routes: {e}")
     
+    # Register Conversation blueprints
+    try:
+        from routes.conversation_router import conversation_bp
+        app.register_blueprint(conversation_bp, url_prefix='/api/conversation')
+        logger.info("✅ Conversation routes registered successfully")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not register Conversation routes: {e}")
+    
     return app
 
 def check_tts_dependencies():
@@ -77,21 +93,43 @@ def check_tts_dependencies():
         logger.warning("TTS features will be disabled. Install with: pip install torch transformers scipy numpy")
         return False
 
+def check_conversation_dependencies():
+    """Check if Conversation dependencies are available"""
+    try:
+        import tinydb
+        import openai
+        import requests
+        logger.info("✅ All Conversation dependencies are available")
+        return True
+    except ImportError as e:
+        logger.warning(f"⚠️  Conversation dependencies missing: {e}")
+        logger.warning("Conversation features will be disabled. Install with: pip install tinydb openai requests")
+        return False
+
 if __name__ == '__main__':
-    logger.info("🚀 Starting Flask API with Text-to-Speech support")
+    logger.info("🚀 Starting Flask API with Text-to-Speech and Conversation support")
     
     # Check TTS dependencies
     tts_available = check_tts_dependencies()
     
+    # Check Conversation dependencies
+    conversation_available = check_conversation_dependencies()
+    
     if tts_available:
         logger.info("🎤 TTS features enabled")
     else:
-        logger.info("📝 Running in basic mode (TTS disabled)")
+        logger.info("📝 TTS features disabled")
+        
+    if conversation_available:
+        logger.info("💬 Conversation features enabled")
+    else:
+        logger.info("📝 Conversation features disabled")
     
     app = create_app()
     
     logger.info("🌐 Server starting at http://localhost:5000")
     logger.info("📚 API Documentation: Check /api/tts/info for TTS status")
+    logger.info("📚 Conversation API: Check /api/conversation/conversations for conversation features")
     
     try:
         app.run(debug=True, host='0.0.0.0', port=5000)

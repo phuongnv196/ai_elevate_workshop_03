@@ -1,6 +1,6 @@
 # ========== IMPORTS ==========
 from tinydb import TinyDB, Query
-from config import Config
+from config.config import Config
 import logging
 
 # ========== LOGGER SETUP ==========
